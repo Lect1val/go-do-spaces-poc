@@ -11,14 +11,11 @@ import (
 )
 
 type StorageHandler struct {
-	cfg    *config.Config
-	client *storage.ClientWrapper
+	cfg *config.Config
 }
 
 func NewStorageHandler(cfg *config.Config) *StorageHandler {
-	return &StorageHandler{
-		cfg: cfg,
-	}
+	return &StorageHandler{cfg: cfg}
 }
 
 // POST /upload
@@ -31,7 +28,15 @@ func (h *StorageHandler) UploadFile(c *gin.Context) {
 	defer file.Close()
 
 	client := storage.NewSpacesClient()
-	url, err := storage.UploadObject(c, client, h.cfg.DOBucket, "uploads/"+header.Filename, file, header.Size, header.Header.Get("Content-Type"))
+
+	// (optional) custom folder path, defaults to "uploads/"
+	path := c.DefaultPostForm("path", "uploads/")
+	key := path + header.Filename
+
+	url, err := storage.UploadObject(
+		c, client, h.cfg.DOBucket, key,
+		file, header.Size, header.Header.Get("Content-Type"),
+	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -49,6 +54,7 @@ func (h *StorageHandler) DeleteFile(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "deleted successfully"})
 }
 
