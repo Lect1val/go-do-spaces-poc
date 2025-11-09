@@ -7,6 +7,8 @@ A proof-of-concept Go application demonstrating file upload, delete, and list op
 - ✅ Upload files to DigitalOcean Spaces
 - ✅ Delete files from DigitalOcean Spaces
 - ✅ List all objects in a bucket
+- ✅ Set lifecycle policies to auto-delete inactive files
+- ✅ Manage lifecycle policies (list, delete)
 - ✅ RESTful API with Gin framework
 - ✅ AWS SDK v2 for S3-compatible operations
 - ✅ Environment-based configuration
@@ -159,6 +161,89 @@ curl http://localhost:8080/list
 }
 ```
 
+### 4. Set Lifecycle Policy (Auto-Delete Inactive Files)
+
+**Endpoint:** `POST /lifecycle/set`
+
+**Content-Type:** `application/json`
+
+**Parameters:**
+- `prefix` (required): The folder/path prefix for files (e.g., `"temp/"`, `"uploads/"`)
+- `expiration_days` (required): Number of days after which files will be automatically deleted (minimum: 1)
+- `rule_id` (optional): Custom identifier for the rule (auto-generated if not provided)
+
+**Example using cURL:**
+```bash
+curl -X POST http://localhost:8080/lifecycle/set \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prefix": "temp/",
+    "expiration_days": 7,
+    "rule_id": "delete-temp-files"
+  }'
+```
+
+**Success Response:**
+```json
+{
+  "message": "lifecycle policy set successfully",
+  "rule_id": "delete-temp-files",
+  "prefix": "temp/",
+  "expiration_days": 7
+}
+```
+
+**Note:** This creates a lifecycle policy that automatically deletes all files in the specified folder after the specified number of days. For example, setting `expiration_days: 7` for the `"temp/"` folder will delete all files in that folder that are older than 7 days.
+
+### 5. List Lifecycle Policies
+
+**Endpoint:** `GET /lifecycle/list`
+
+**Example using cURL:**
+```bash
+curl http://localhost:8080/lifecycle/list
+```
+
+**Success Response:**
+```json
+{
+  "rules": [
+    {
+      "id": "delete-temp-files",
+      "status": "Enabled",
+      "prefix": "temp/",
+      "expiration_days": 7
+    },
+    {
+      "id": "delete-old-uploads",
+      "status": "Enabled",
+      "prefix": "uploads/old/",
+      "expiration_days": 30
+    }
+  ]
+}
+```
+
+### 6. Delete Lifecycle Policy
+
+**Endpoint:** `DELETE /lifecycle/delete/:ruleId`
+
+**Parameters:**
+- `ruleId` (required): The ID of the lifecycle rule to delete (URL parameter)
+
+**Example using cURL:**
+```bash
+curl -X DELETE http://localhost:8080/lifecycle/delete/delete-temp-files
+```
+
+**Success Response:**
+```json
+{
+  "message": "lifecycle policy deleted successfully",
+  "rule_id": "delete-temp-files"
+}
+```
+
 ## Project Structure
 
 ```
@@ -173,7 +258,8 @@ go-do-spaces-poc/
 │   ├── client.go               # S3-compatible Spaces client initialization
 │   ├── upload.go               # File upload logic
 │   ├── delete.go               # File deletion logic
-│   └── list.go                 # List objects functionality
+│   ├── list.go                 # List objects functionality
+│   └── lifecycle.go            # Lifecycle policy management
 │
 ├── handler/
 │   └── storage_handler.go      # HTTP request handlers

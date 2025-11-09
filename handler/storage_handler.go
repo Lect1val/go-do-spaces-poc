@@ -68,3 +68,87 @@ func (h *StorageHandler) ListFiles(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"files": files})
 }
+
+// POST /lifecycle/set
+func (h *StorageHandler) SetLifecyclePolicy(c *gin.Context) {
+	var req struct {
+		Prefix         string `json:"prefix" binding:"required"`
+		ExpirationDays int32  `json:"expiration_days" binding:"required,min=1"`
+		RuleID         string `json:"rule_id"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Generate a default rule ID if not provided
+	if req.RuleID == "" {
+		req.RuleID = "delete-" + req.Prefix + "-rule"
+	}
+
+	client := storage.NewSpacesClient()
+	err := storage.SetLifecyclePolicy(c, client, h.cfg.DOBucket, req.Prefix, req.ExpirationDays, req.RuleID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":         "lifecycle policy set successfully",
+		"rule_id":         req.RuleID,
+		"prefix":          req.Prefix,
+		"expiration_days": req.ExpirationDays,
+	})
+}
+
+// GET /lifecycle/list
+func (h *StorageHandler) GetLifecyclePolicies(c *gin.Context) {
+	client := storage.NewSpacesClient()
+	rules, err := storage.GetLifecyclePolicy(c, client, h.cfg.DOBucket)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Format rules for better readability
+	var formattedRules []gin.H
+	for _, rule := range rules {
+		ruleData := gin.H{
+			"id":     rule.ID,
+			"status": rule.Status,
+		}
+
+		// Extract prefix
+		if rule.Prefix != nil {
+			ruleData["prefix"] = *rule.Prefix
+		}
+
+		// Extract expiration days
+		if rule.Expiration != nil && rule.Expiration.Days != nil {
+			ruleData["expiration_days"] = *rule.Expiration.Days
+		}
+
+		formattedRules = append(formattedRules, ruleData)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"rules": formattedRules})
+}
+
+// DELETE /lifecycle/delete/:ruleId
+func (h *StorageHandler) DeleteLifecyclePolicy(c *gin.Context) {
+	ruleID := c.Param("ruleId")
+	if ruleID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "rule_id is required"})
+		return
+	}
+
+	client := storage.NewSpacesClient()
+	err := storage.DeleteLifecyclePolicy(c, client, h.cfg.DOBucket, ruleID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "lifecycle policy deleted successfully", "rule_id": ruleID})
+}

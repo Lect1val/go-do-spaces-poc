@@ -15,5 +15,10 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 	r.DELETE("/delete/:key", h.DeleteFile)
 	r.GET("/list", h.ListFiles)
 
+	// Lifecycle policy endpoints
+	r.POST("/lifecycle/set", h.SetLifecyclePolicy)
+	r.GET("/lifecycle/list", h.GetLifecyclePolicies)
+	r.DELETE("/lifecycle/delete/:ruleId", h.DeleteLifecyclePolicy)
+
 	return r
 }
