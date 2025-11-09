@@ -14,6 +14,7 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 	r.POST("/upload", h.UploadFile)
 	r.DELETE("/delete/:key", h.DeleteFile)
 	r.GET("/list", h.ListFiles)
+	r.GET("/download/folder", h.DownloadFolder)
 
 	// Lifecycle policy endpoints
 	r.POST("/lifecycle/set", h.SetLifecyclePolicy)

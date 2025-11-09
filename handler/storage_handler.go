@@ -1,8 +1,13 @@
 package handler
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"fmt"
 	"net/http"
+	"path/filepath"
+	"strings"
 
 	"go-do-spaces-poc/config"
 	"go-do-spaces-poc/storage"
@@ -107,6 +112,11 @@ func (h *StorageHandler) GetLifecyclePolicies(c *gin.Context) {
 	client := storage.NewSpacesClient()
 	rules, err := storage.GetLifecyclePolicy(c, client, h.cfg.DOBucket)
 	if err != nil {
+		// If no lifecycle configuration exists, return empty list instead of error
+		if storage.IsNoLifecycleConfigError(err) {
+			c.JSON(http.StatusOK, gin.H{"rules": []gin.H{}})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -151,4 +161,95 @@ func (h *StorageHandler) DeleteLifecyclePolicy(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "lifecycle policy deleted successfully", "rule_id": ruleID})
+}
+
+// GET /download/folder?prefix=<folder-path>
+func (h *StorageHandler) DownloadFolder(c *gin.Context) {
+	prefix := c.Query("prefix")
+	if prefix == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "prefix query parameter is required"})
+		return
+	}
+
+	// Ensure prefix ends with / if not already
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
+	client := storage.NewSpacesClient()
+
+	// List all objects with the given prefix
+	keys, err := storage.ListObjectsByPrefix(c, client, h.cfg.DOBucket, prefix)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(keys) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no files found with the given prefix"})
+		return
+	}
+
+	// Create a buffer to write our archive to
+	buf := new(bytes.Buffer)
+	zipWriter := zip.NewWriter(buf)
+
+	// Download each file and add it to the zip
+	for _, key := range keys {
+		// Skip directory markers (keys ending with /)
+		if strings.HasSuffix(key, "/") {
+			continue
+		}
+
+		// Download the file
+		data, err := storage.DownloadObject(c, client, h.cfg.DOBucket, key)
+		if err != nil {
+			zipWriter.Close()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to download %s: %v", key, err)})
+			return
+		}
+
+		// Create a file in the zip archive
+		// Use the relative path (remove the prefix) for better organization
+		relativePath := strings.TrimPrefix(key, prefix)
+		if relativePath == "" {
+			relativePath = filepath.Base(key)
+		}
+
+		zipFile, err := zipWriter.Create(relativePath)
+		if err != nil {
+			zipWriter.Close()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to create zip entry for %s: %v", key, err)})
+			return
+		}
+
+		_, err = zipFile.Write(data)
+		if err != nil {
+			zipWriter.Close()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to write %s to zip: %v", key, err)})
+			return
+		}
+	}
+
+	// Close the zip writer to finalize the archive
+	err = zipWriter.Close()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to finalize zip archive"})
+		return
+	}
+
+	// Generate a filename for the zip
+	zipFilename := strings.TrimSuffix(strings.TrimSuffix(prefix, "/"), "/")
+	if zipFilename == "" {
+		zipFilename = "download"
+	} else {
+		// Use only the last part of the path as filename
+		zipFilename = filepath.Base(zipFilename)
+	}
+	zipFilename = zipFilename + ".zip"
+
+	// Set headers and send the zip file
+	c.Header("Content-Type", "application/zip")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", zipFilename))
+	c.Data(http.StatusOK, "application/zip", buf.Bytes())
 }

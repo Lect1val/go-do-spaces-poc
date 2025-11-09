@@ -1,10 +1,11 @@
 # go-do-spaces-poc
 
-A proof-of-concept Go application demonstrating file upload, delete, and list operations with DigitalOcean Spaces using the AWS S3-compatible API.
+A proof-of-concept Go application demonstrating file upload, download, delete, and list operations with DigitalOcean Spaces using the AWS S3-compatible API.
 
 ## Features
 
 - ✅ Upload files to DigitalOcean Spaces
+- ✅ Download multiple files from a folder as a zip archive
 - ✅ Delete files from DigitalOcean Spaces
 - ✅ List all objects in a bucket
 - ✅ Set lifecycle policies to auto-delete inactive files
@@ -161,7 +162,30 @@ curl http://localhost:8080/list
 }
 ```
 
-### 4. Set Lifecycle Policy (Auto-Delete Inactive Files)
+### 4. Download Folder as Zip
+
+**Endpoint:** `GET /download/folder?prefix=<folder-path>`
+
+**Parameters:**
+- `prefix` (required): The folder path/prefix to download (e.g., `uploads/`, `images/`)
+
+**Example using cURL:**
+```bash
+# Download all files from the "uploads/" folder
+curl -O -J http://localhost:8080/download/folder?prefix=uploads/
+
+# Download all files from a nested folder
+curl -O -J http://localhost:8080/download/folder?prefix=images/2024/
+```
+
+**Success Response:**
+- Returns a zip file containing all files from the specified folder
+- The zip filename will be based on the folder name (e.g., `uploads.zip`)
+- Files are organized in the zip maintaining their relative structure
+
+**Note:** The prefix parameter automatically appends a trailing slash if not provided. The endpoint will download all files matching the prefix and package them into a single zip archive. Directory markers (keys ending with `/`) are automatically skipped.
+
+### 5. Set Lifecycle Policy (Auto-Delete Inactive Files)
 
 **Endpoint:** `POST /lifecycle/set`
 
@@ -195,7 +219,7 @@ curl -X POST http://localhost:8080/lifecycle/set \
 
 **Note:** This creates a lifecycle policy that automatically deletes all files in the specified folder after the specified number of days. For example, setting `expiration_days: 7` for the `"temp/"` folder will delete all files in that folder that are older than 7 days.
 
-### 5. List Lifecycle Policies
+### 6. List Lifecycle Policies
 
 **Endpoint:** `GET /lifecycle/list`
 
@@ -224,7 +248,7 @@ curl http://localhost:8080/lifecycle/list
 }
 ```
 
-### 6. Delete Lifecycle Policy
+### 7. Delete Lifecycle Policy
 
 **Endpoint:** `DELETE /lifecycle/delete/:ruleId`
 
@@ -257,6 +281,7 @@ go-do-spaces-poc/
 ├── storage/
 │   ├── client.go               # S3-compatible Spaces client initialization
 │   ├── upload.go               # File upload logic
+│   ├── download.go             # File download logic
 │   ├── delete.go               # File deletion logic
 │   ├── list.go                 # List objects functionality
 │   └── lifecycle.go            # Lifecycle policy management

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -102,4 +103,12 @@ func DeleteLifecyclePolicy(ctx context.Context, client *s3.Client, bucket, ruleI
 	})
 
 	return err
+}
+
+// IsNoLifecycleConfigError checks if the error is due to no lifecycle configuration existing
+func IsNoLifecycleConfigError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "NoSuchLifecycleConfiguration")
 }
